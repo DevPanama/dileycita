@@ -885,7 +885,7 @@ let iosBlocked=false;                    // true on iPhone/iPad in Safari (not i
 let fishes=[]; let powerups=[]; const bubbles=[]; const particles=[];
 const player=new Player();
 let spawnTimer=0, elapsed=0, puTimer=6, fishShrink=0, prevFeast=0;
-let heart=null, heartTimer=120;                  // extra-life heart (~every 2 min)
+let heart=null, heartTimer=90;                   // extra-life heart (~every 90s)
 // shark event state — shark arrives roughly once a minute
 let shark=null, sharkTimer=rand(45,60), sharkWarn=0, sharkPanic=false, shake=0;
 for(let i=0;i<26;i++) bubbles.push(new Bubble());
@@ -975,7 +975,7 @@ function startGame(){
   ensureAudio();                         // unlock + start music on this tap
   player.reset();
   fishes=[]; powerups=[]; particles.length=0; spawnTimer=0; elapsed=0; puTimer=6; fishShrink=0; prevFeast=0;
-  heart=null; heartTimer=120;
+  heart=null; heartTimer=90;
   shark=null; sharkTimer=rand(45,60); sharkWarn=0; sharkPanic=false; shake=0;
   for(let i=0;i<6;i++){                                  // start with small, edible fish only
     const rr=rand(12,player.r*0.85), fl=Math.random()<0.5;
@@ -1118,7 +1118,7 @@ function loop(now){
     // ---------- extra-life heart (~cada 2 min) ----------
     if(!heart){
       heartTimer-=dt;
-      if(heartTimer<=0){ heart=new Heart(); heartTimer=120; }
+      if(heartTimer<=0){ heart=new Heart(); heartTimer=90; }
     } else {
       heart.update(dt);
       const hdx=heart.x-player.x, hdy=heart.y-player.y;
