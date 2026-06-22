@@ -958,7 +958,7 @@ function spawnFish(){
   let rr, roll=Math.random(), big=false, giant=false;
   if(bigOnScreen===0 && Math.random() < 0.10 - t*0.07){                   // rare GIANT 3–4× (mostly early)
     rr=player.r*rand(3,4); big=true; giant=true;
-  } else if(roll < 0.64 - t*0.05) rr=rand(player.r*0.35, player.r*0.85);  // edible (stays common)
+  } else if(roll < 0.57 - t*0.05) rr=rand(player.r*0.35, player.r*0.85);  // edible (a bit less common)
   else if(roll < 0.88)            rr=rand(player.r*0.92, player.r*1.25);  // risky / slightly bigger
   else { rr=rand(player.r*1.2, player.r*1.6); big=true; }                 // dangerous — capped
   // never more than one big fish on screen at a time → always a fair gap
@@ -977,7 +977,7 @@ function startGame(){
   fishes=[]; powerups=[]; particles.length=0; spawnTimer=0; elapsed=0; puTimer=6; fishShrink=0; prevFeast=0;
   heart=null; heartTimer=90;
   shark=null; sharkTimer=rand(45,60); sharkWarn=0; sharkPanic=false; shake=0;
-  for(let i=0;i<6;i++){                                  // start with small, edible fish only
+  for(let i=0;i<4;i++){                                  // start with a few small, edible fish
     const rr=rand(12,player.r*0.85), fl=Math.random()<0.5;
     fishes.push(new Fish(rr, rand(0,W), laneY(), rand(50,110)*(fl?1:-1), pick(RIVALS)));
   }
