@@ -1,0 +1,1205 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Dileycita</title>
+<!-- PWA / fullscreen on phones (Add to Home Screen) -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Dileycita">
+<meta name="theme-color" content="#1f80b0">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #bcd9ec; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    -webkit-user-select: none; user-select: none; touch-action: none;
+  }
+  /* the framed game like a web portal (desktop only) */
+  #frame {
+    position: fixed; left: 0; top: 0; width: 100vw;
+    height: 100vh; height: 100dvh;          /* dvh = excludes Safari bars where supported */
+    overflow: hidden;
+  }
+  @media (min-width: 901px) {
+    #frame { inset: 24px; left: 24px; top: 24px; width: auto; height: auto;
+      border-radius: 18px; box-shadow: 0 0 0 10px #cfe4f2, 0 18px 50px rgba(20,60,90,.35); }
+  }
+  #game { display: block; width: 100%; height: 100%; }
+
+  /* ---------- Top HUD ---------- */
+  #score {
+    position: absolute; top: 14px; left: 0; right: 0; text-align: center;
+    font-size: 46px; font-weight: 700; color: #3f6e88;
+    text-shadow: 0 2px 3px rgba(255,255,255,.45);
+    pointer-events: none; z-index: 6; letter-spacing: 1px;
+  }
+  #lives {
+    position: absolute; top: 12px; left: 16px; z-index: 6;
+    display: flex; flex-wrap: wrap; gap: 2px 4px; max-width: 220px;
+    pointer-events: none; font-size: 30px; line-height: 1;
+    text-shadow: 0 2px 4px rgba(0,0,0,.45);
+  }
+
+  /* power-up banner */
+  #puMsg {
+    position: absolute; top: 64px; left: 50%;
+    font-size: 26px; font-weight: 800; letter-spacing: .5px;
+    pointer-events: none; z-index: 8; white-space: nowrap;
+    padding: 10px 26px; border-radius: 40px;
+    background: rgba(6, 26, 40, .82);
+    border: 2px solid rgba(255,255,255,.28);
+    box-shadow: 0 6px 20px rgba(0,0,0,.45), 0 0 22px currentColor;
+    text-shadow: 0 2px 3px rgba(0,0,0,.95), 0 0 8px rgba(0,0,0,.7);
+    opacity: 0; transform: translateX(-50%) translateY(-8px) scale(.9);
+    transition: opacity .22s ease, transform .22s ease;
+  }
+  #puMsg.show { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+
+  /* top-right buttons (sound + fullscreen) */
+  #fsBtn, #muteBtn {
+    position: absolute; top: 12px; z-index: 7;
+    width: 40px; height: 40px; border-radius: 50%; cursor: pointer;
+    background: rgba(10,50,75,.35); border: 1px solid rgba(255,255,255,.35);
+    display: flex; align-items: center; justify-content: center;
+    -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+  }
+  #fsBtn  { right: calc(14px + env(safe-area-inset-right)); }
+  #muteBtn{ right: calc(62px + env(safe-area-inset-right)); }
+  #fsBtn svg, #muteBtn svg { width: 22px; height: 22px; }
+
+  /* ---------- Overlays ---------- */
+  .overlay {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+    color: #fff; z-index: 20; transition: opacity .35s ease;
+    background: rgba(18, 70, 100, 0.42); backdrop-filter: blur(2px);
+  }
+  .overlay.hidden { opacity: 0; pointer-events: none; }
+  .card {
+    background: rgba(14, 64, 94, 0.78);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 22px; padding: 36px 44px; max-width: 430px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+  }
+  h1 {
+    font-size: 56px; letter-spacing: 2px; margin-bottom: 4px; font-weight: 800;
+    background: linear-gradient(180deg, #ffd36b, #ff8a2b);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .tag { font-size: 15px; opacity: .85; margin-bottom: 20px; }
+  .rules { font-size: 15px; line-height: 1.7; opacity: .94; margin-bottom: 24px; text-align: left; }
+  .rules b { color: #ffd36b; }
+  .btn {
+    font-size: 18px; font-weight: 700; color: #073047;
+    background: linear-gradient(180deg, #ffd86f, #ffb43d);
+    border: none; border-radius: 999px; padding: 13px 36px; cursor: pointer;
+    box-shadow: 0 8px 22px rgba(255,170,50,0.4); transition: transform .12s ease;
+  }
+  .btn:hover { transform: translateY(-2px) scale(1.03); }
+  .small { margin-top: 14px; font-size: 13px; opacity: .6; }
+  .final { font-size: 20px; margin: 6px 0 16px; }
+  .final span { color: #ffd36b; font-weight: 700; font-size: 28px; }
+
+  /* ---------- Mobile / landscape ---------- */
+  #iosGate { z-index: 200; }            /* blocks play on iOS-in-browser */
+  #lives { padding-left: env(safe-area-inset-left); }
+  #bar { padding-right: env(safe-area-inset-right); }
+  #rotate {
+    display: none; position: absolute; inset: 0; z-index: 100;
+    flex-direction: column; align-items: center; justify-content: center;
+    background: #0e405e; color: #fff; text-align: center; padding: 30px;
+  }
+  #rotate .phone { font-size: 64px; animation: tilt 1.6s ease-in-out infinite; }
+  #rotate p { font-size: 20px; margin-top: 16px; font-weight: 600; }
+  @keyframes tilt { 0%,100%{transform:rotate(0)} 50%{transform:rotate(-90deg)} }
+
+  @media (max-width: 900px) {
+    #score { font-size: 32px; top: 6px; }
+    #lives { font-size: 24px; }
+  }
+  /* show the rotate prompt only on small screens held in portrait */
+  @media (max-width: 900px) and (orientation: portrait) {
+    #rotate { display: flex; }
+  }
+</style>
+</head>
+<body>
+<div id="frame">
+  <canvas id="game"></canvas>
+
+  <div id="score">0</div>
+  <div id="lives"></div>
+  <div id="puMsg"></div>
+
+  <!-- sound toggle (top-right) -->
+  <button id="muteBtn" title="Sonido sí/no"></button>
+
+  <!-- fullscreen toggle (top-right) -->
+  <button id="fsBtn" title="Pantalla completa">
+    <svg viewBox="0 0 24 24" fill="none"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/></svg>
+  </button>
+
+  <!-- rotate-to-landscape prompt (mobile portrait) -->
+  <div id="rotate">
+    <div class="phone">📱</div>
+    <p>Gira el teléfono en horizontal para jugar</p>
+  </div>
+
+  <!-- iOS gate: must install to Home Screen to play -->
+  <div class="overlay hidden" id="iosGate">
+    <div class="card">
+      <div style="font-size:54px; line-height:1">🧜‍♀️</div>
+      <h1 style="font-size:36px; margin-top:6px">Juega a Dileycita como app</h1>
+      <div class="rules">
+        En el iPhone, Dileycita <b>no se juega en el navegador</b>, sino como
+        app a pantalla completa. Añádela así:<br><br>
+        1️⃣ Toca abajo el <b>icono de compartir</b>
+        <svg viewBox="0 0 24 24" fill="none" style="width:20px;height:20px;vertical-align:-4px">
+          <path d="M12 3v12M12 3L8 7M12 3l4 4" stroke="#ffd36b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M6 11v8a1 1 0 001 1h10a1 1 0 001-1v-8" stroke="#ffd36b" stroke-width="2" stroke-linecap="round"/>
+        </svg><br>
+        2️⃣ Elige <b>"Añadir a pantalla de inicio"</b><br>
+        3️⃣ Abre <b>Dileycita</b> desde tu pantalla de inicio 🎉
+      </div>
+      <div class="small">Después se juega a pantalla completa, sin la barra de Safari.</div>
+    </div>
+  </div>
+
+  <!-- iOS: how to go truly fullscreen -->
+  <div class="overlay hidden" id="fsTip">
+    <div class="card">
+      <h1 style="font-size:34px">Pantalla completa</h1>
+      <div class="rules">
+        En el iPhone, Safari no puede ocultar su barra solo. Para pantalla
+        completa de verdad:<br><br>
+        1️⃣ Toca abajo el <b>icono de compartir</b> &#x2191;<br>
+        2️⃣ Elige <b>"Añadir a pantalla de inicio"</b><br>
+        3️⃣ Abre <b>Dileycita</b> desde tu pantalla de inicio — ¡sin barra! 🎉
+      </div>
+      <button class="btn" id="fsTipClose">Vale</button>
+    </div>
+  </div>
+
+  <!-- start -->
+  <div class="overlay" id="startScreen">
+    <div class="card">
+      <h1>DILEYCITA</h1>
+      <div class="tag">Come o serás comida</div>
+      <div class="rules">
+        🧜‍♀️ Eres <b>Dileycita</b> y nadas por el mar buscando comida.<br><br>
+        🟢 Solo puedes comer peces <b>más pequeños</b> que tú.<br>
+        🔴 ¡Cuidado con los peces <b>más grandes</b>: te comen a ti!<br>
+        ⭐ Cuanto más comes, <b>más grande</b> te haces.<br><br>
+        🐟 <b>Arrastra con el dedo</b> (o usa las <b>flechas</b> en el ordenador).
+      </div>
+      <button class="btn" id="startBtn">Jugar</button>
+      <div class="small">Haz clic o pulsa espacio</div>
+    </div>
+  </div>
+
+  <!-- game over -->
+  <div class="overlay hidden" id="overScreen">
+    <div class="card">
+      <h1 style="font-size:44px">Fin del juego</h1>
+      <div class="final">Puntos: <span id="finalScore">0</span></div>
+      <div class="tag" id="overMsg"></div>
+      <button class="btn" id="againBtn">Otra vez</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+"use strict";
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const frame = document.getElementById("frame");
+
+let W = 0, H = 0, DPR = 1;
+const BAR_H = 0;                  // no decorative bar — full-height play area
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = frame.clientWidth; H = frame.clientHeight;
+  canvas.width = W * DPR; canvas.height = H * DPR;
+  canvas.style.width = W + "px"; canvas.style.height = H + "px";
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  buildDecor();
+}
+window.addEventListener("resize", resize);
+window.addEventListener("orientationchange", resize);
+if (window.visualViewport) window.visualViewport.addEventListener("resize", resize);
+
+// ---------- Input ----------
+// Finger-drag steering for mobile. The fish swims toward where your finger is.
+const ptr = { x: 0, y: 0, active: false };
+function setPtr(clientX, clientY) {
+  const r = canvas.getBoundingClientRect();
+  ptr.x = clientX - r.left; ptr.y = clientY - r.top; ptr.active = true;
+}
+canvas.addEventListener("touchstart", e => { const t=e.touches[0]; if(t) setPtr(t.clientX,t.clientY); e.preventDefault(); }, {passive:false});
+canvas.addEventListener("touchmove",  e => { const t=e.touches[0]; if(t) setPtr(t.clientX,t.clientY); e.preventDefault(); }, {passive:false});
+canvas.addEventListener("touchend",   e => { if(e.touches.length===0) ptr.active=false; }, {passive:false});
+canvas.addEventListener("touchcancel",e => { ptr.active=false; }, {passive:false});
+
+const keys = {};
+window.addEventListener("keydown", e => {
+  keys[e.key.toLowerCase()] = true;
+  if (["arrowup","arrowdown","arrowleft","arrowright"," "].includes(e.key.toLowerCase())) e.preventDefault();
+  if ((e.key === " " || e.key === "Enter") && (state==="start"||state==="over")) startGame();
+}, {passive:false});
+window.addEventListener("keyup", e => { keys[e.key.toLowerCase()] = false; });
+
+// ---------- Helpers ----------
+const rand = (a, b) => a + Math.random() * (b - a);
+const pick = arr => arr[(Math.random() * arr.length) | 0];
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const lerp = (a, b, t) => a + (b - a) * t;
+const TAU = Math.PI * 2;
+
+// =====================================================================
+//  FISH RENDERING  — species matched to the reference photo
+//  All draw in local space facing +x, origin at body centre.
+//  r = collision radius ≈ half body length.
+// =====================================================================
+function eye(c, ex, ey, R) {
+  c.beginPath(); c.arc(ex, ey, R, 0, TAU); c.fillStyle = "#10242e"; c.fill();
+  c.beginPath(); c.arc(ex + R*0.05, ey - R*0.32, R*0.34, 0, TAU); c.fillStyle = "#fff"; c.fill();
+  c.beginPath(); c.arc(ex - R*0.3, ey + R*0.25, R*0.16, 0, TAU);
+  c.fillStyle = "rgba(255,255,255,.5)"; c.fill();
+}
+
+// ----- Blue Tang ("Dory") : flat oval royal-blue body, yellow tail, black marking
+function drawTang(c, r, wag) {
+  const L = r, Hh = r * 0.74;
+  // tail (yellow, forked)
+  c.save(); c.translate(-L*0.82, 0); c.rotate(wag*0.5);
+  c.beginPath();
+  c.moveTo(0,0);
+  c.quadraticCurveTo(-L*0.4,-Hh*0.9,-L*0.62,-Hh*1.05);
+  c.lineTo(-L*0.5,-Hh*0.25);
+  c.quadraticCurveTo(-L*0.62,0,-L*0.5,Hh*0.25);
+  c.lineTo(-L*0.62,Hh*1.05);
+  c.quadraticCurveTo(-L*0.4,Hh*0.9,0,0);
+  c.closePath();
+  c.fillStyle = "#ffcf1a"; c.fill();
+  c.strokeStyle = "rgba(180,120,0,.4)"; c.lineWidth=r*0.04; c.stroke();
+  c.restore();
+  // dorsal + anal yellow edge
+  c.beginPath();
+  c.moveTo(L*0.2,-Hh*0.92); c.quadraticCurveTo(-L*0.4,-Hh*1.15,-L*0.7,-Hh*0.5);
+  c.quadraticCurveTo(-L*0.3,-Hh*0.75,L*0.2,-Hh*0.62); c.closePath();
+  c.fillStyle="#ffcf1a"; c.fill();
+  // body
+  const g = c.createLinearGradient(0,-Hh,0,Hh);
+  g.addColorStop(0,"#3f86e0"); g.addColorStop(.5,"#1f5fc8"); g.addColorStop(1,"#103f9c");
+  c.beginPath(); c.ellipse(0,0,L*0.85,Hh,0,0,TAU); c.fillStyle=g; c.fill();
+  // black palette marking (Dory pattern)
+  c.save(); c.beginPath(); c.ellipse(0,0,L*0.85,Hh,0,0,TAU); c.clip();
+  c.beginPath();
+  c.moveTo(L*0.5,-Hh*0.7);
+  c.quadraticCurveTo(-L*0.2,-Hh*0.2,-L*0.7,-Hh*0.1);
+  c.lineTo(-L*0.7,Hh*0.5);
+  c.quadraticCurveTo(-L*0.1,Hh*0.1,L*0.1,Hh*0.85);
+  c.lineTo(L*0.45,Hh*0.85);
+  c.quadraticCurveTo(L*0.0,-Hh*0.05,L*0.62,-Hh*0.4);
+  c.closePath();
+  c.fillStyle="rgba(10,18,40,.92)"; c.fill();
+  c.restore();
+  // belly sheen
+  c.beginPath(); c.ellipse(L*0.15,Hh*0.45,L*0.55,Hh*0.3,0,0,TAU);
+  c.fillStyle="rgba(255,255,255,.12)"; c.fill();
+  // yellow pectoral fin
+  c.beginPath();
+  c.moveTo(L*0.25,Hh*0.15); c.quadraticCurveTo(L*0.15,Hh*0.75,L*0.5,Hh*0.55);
+  c.quadraticCurveTo(L*0.45,Hh*0.2,L*0.25,Hh*0.15); c.closePath();
+  c.fillStyle="#ffcf1a"; c.fill();
+  eye(c, L*0.55, -Hh*0.12, r*0.14);
+}
+
+// ----- Blue damselfish : rounded vivid-blue body
+function drawDamsel(c, r, wag) {
+  const L = r, Hh = r * 0.8;
+  c.save(); c.translate(-L*0.7,0); c.rotate(wag*0.5);
+  c.beginPath();
+  c.moveTo(0,0); c.quadraticCurveTo(-L*0.5,-Hh*0.7,-L*0.65,-Hh*0.7);
+  c.quadraticCurveTo(-L*0.45,0,-L*0.65,Hh*0.7);
+  c.quadraticCurveTo(-L*0.5,Hh*0.7,0,0); c.closePath();
+  const tg=c.createLinearGradient(-L,0,0,0); tg.addColorStop(0,"#1a63c8"); tg.addColorStop(1,"#3a93f0");
+  c.fillStyle=tg; c.fill(); c.restore();
+  // dorsal fin
+  c.beginPath(); c.moveTo(L*0.25,-Hh*0.8); c.quadraticCurveTo(-L*0.35,-Hh*1.15,-L*0.55,-Hh*0.55);
+  c.quadraticCurveTo(-L*0.1,-Hh*0.7,L*0.25,-Hh*0.7); c.closePath();
+  c.fillStyle="#1c66cc"; c.fill();
+  const g=c.createLinearGradient(0,-Hh,0,Hh);
+  g.addColorStop(0,"#5fb0ff"); g.addColorStop(.55,"#2e86f0"); g.addColorStop(1,"#1a5fd0");
+  c.beginPath(); c.ellipse(0,0,L*0.78,Hh,0,0,TAU); c.fillStyle=g; c.fill();
+  // lighter vertical bands
+  c.save(); c.beginPath(); c.ellipse(0,0,L*0.78,Hh,0,0,TAU); c.clip();
+  c.globalAlpha=.18; c.fillStyle="#bfe2ff";
+  for(let i=-1;i<=1;i++){ c.beginPath(); c.ellipse(i*L*0.32,0,L*0.06,Hh,0,0,TAU); c.fill(); }
+  c.restore();
+  c.beginPath(); c.ellipse(L*0.1,Hh*0.5,L*0.5,Hh*0.28,0,0,TAU); c.fillStyle="rgba(255,255,255,.16)"; c.fill();
+  eye(c, L*0.42, -Hh*0.1, r*0.17);
+}
+
+// ----- Purple/magenta sleek fish
+function drawPurple(c, r, wag) {
+  const L = r, Hh = r * 0.44;
+  c.save(); c.translate(-L*0.85,0); c.rotate(wag*0.55);
+  c.beginPath();
+  c.moveTo(0,0); c.quadraticCurveTo(-L*0.45,-Hh*1.6,-L*0.7,-Hh*1.7);
+  c.lineTo(-L*0.55,0); c.lineTo(-L*0.7,Hh*1.7);
+  c.quadraticCurveTo(-L*0.45,Hh*1.6,0,0); c.closePath();
+  const tg=c.createLinearGradient(-L,0,0,0); tg.addColorStop(0,"#7a3fb0"); tg.addColorStop(1,"#b072de");
+  c.fillStyle=tg; c.fill(); c.restore();
+  // dorsal
+  c.beginPath(); c.moveTo(L*0.3,-Hh*0.95); c.quadraticCurveTo(-L*0.2,-Hh*1.7,-L*0.5,-Hh*0.7);
+  c.quadraticCurveTo(-L*0.1,-Hh*0.85,L*0.3,-Hh*0.85); c.closePath();
+  c.fillStyle="#9450c8"; c.fill();
+  const g=c.createLinearGradient(0,-Hh,0,Hh);
+  g.addColorStop(0,"#c98fe8"); g.addColorStop(.5,"#a35fd0"); g.addColorStop(1,"#7d3fb0");
+  c.beginPath(); c.ellipse(0,0,L*0.86,Hh,0,0,TAU); c.fillStyle=g; c.fill();
+  // pink lateral stripe
+  c.save(); c.beginPath(); c.ellipse(0,0,L*0.86,Hh,0,0,TAU); c.clip();
+  c.beginPath(); c.moveTo(L,-Hh*0.1); c.lineTo(-L,-Hh*0.25); c.lineTo(-L,Hh*0.1); c.lineTo(L,Hh*0.25); c.closePath();
+  c.fillStyle="rgba(255,170,220,.4)"; c.fill(); c.restore();
+  c.beginPath(); c.ellipse(L*0.1,Hh*0.45,L*0.55,Hh*0.4,0,0,TAU); c.fillStyle="rgba(255,255,255,.14)"; c.fill();
+  eye(c, L*0.58, -Hh*0.1, r*0.13);
+}
+
+// ----- Orange anthias / goldfish : the player & small orange fish
+function drawAnthias(c, r, wag, glow) {
+  const L = r, Hh = r * 0.6;
+  if (glow) { c.shadowColor="rgba(255,200,90,.8)"; c.shadowBlur=20; }
+  // flowing forked tail
+  c.save(); c.translate(-L*0.8,0); c.rotate(wag*0.5);
+  c.beginPath();
+  c.moveTo(0,0);
+  c.quadraticCurveTo(-L*0.5,-Hh*1.0,-L*0.78,-Hh*1.25);
+  c.quadraticCurveTo(-L*0.5,-Hh*0.2,-L*0.55,0);
+  c.quadraticCurveTo(-L*0.5,Hh*0.2,-L*0.78,Hh*1.25);
+  c.quadraticCurveTo(-L*0.5,Hh*1.0,0,0); c.closePath();
+  const tg=c.createLinearGradient(-L,0,0,0); tg.addColorStop(0,"#ef6a2b"); tg.addColorStop(1,"#ff9a3c");
+  c.fillStyle=tg; c.fill(); c.restore();
+  // wavy dorsal fin
+  c.beginPath();
+  c.moveTo(L*0.35,-Hh*0.78);
+  c.quadraticCurveTo(L*0.0,-Hh*1.35,-L*0.3,-Hh*0.95);
+  c.quadraticCurveTo(-L*0.55,-Hh*1.15,-L*0.6,-Hh*0.55);
+  c.quadraticCurveTo(-L*0.2,-Hh*0.7,L*0.35,-Hh*0.62); c.closePath();
+  c.fillStyle="#f47a2e"; c.fill();
+  // anal fin
+  c.beginPath(); c.moveTo(-L*0.1,Hh*0.55); c.quadraticCurveTo(-L*0.4,Hh*1.15,-L*0.55,Hh*0.6);
+  c.quadraticCurveTo(-L*0.25,Hh*0.55,-L*0.1,Hh*0.55); c.closePath();
+  c.fillStyle="#f47a2e"; c.fill();
+  c.shadowBlur = glow ? 20 : 0;
+  // body
+  const g=c.createLinearGradient(0,-Hh,0,Hh);
+  g.addColorStop(0,"#ffb24a"); g.addColorStop(.45,"#ff8f2e"); g.addColorStop(1,"#ef6a24");
+  c.beginPath(); c.ellipse(0,0,L*0.82,Hh,0,0,TAU); c.fillStyle=g; c.fill();
+  c.shadowBlur=0;
+  // pale belly
+  c.beginPath(); c.ellipse(L*0.15,Hh*0.4,L*0.6,Hh*0.5,0,0,TAU);
+  c.fillStyle="rgba(255,240,210,.4)"; c.fill();
+  // pink cheek
+  c.beginPath(); c.ellipse(L*0.5,Hh*0.05,L*0.18,Hh*0.32,0,0,TAU);
+  c.fillStyle="rgba(255,120,90,.35)"; c.fill();
+  // pectoral fin
+  c.beginPath(); c.moveTo(L*0.28,Hh*0.1); c.quadraticCurveTo(L*0.05,Hh*0.7,L*0.45,Hh*0.5);
+  c.quadraticCurveTo(L*0.42,Hh*0.2,L*0.28,Hh*0.1); c.closePath();
+  c.fillStyle="rgba(255,150,70,.7)"; c.fill();
+  eye(c, L*0.55, -Hh*0.15, r*0.15);
+}
+
+// ----- Realistic rival fish (salmon-style body, NORMAL fish head) — recoloured variants
+const RIVALS = [
+  { back:"#c2664a", mid:"#e0917a", belly:"#f6d3c6", fin:"#d27a5e" }, // salmon / pink
+  { back:"#34687f", mid:"#5a92ab", belly:"#c4dce6", fin:"#3f7c95" }, // steel blue
+  { back:"#6b7a33", mid:"#93a258", belly:"#d3dca3", fin:"#76863c" }, // olive green
+  { back:"#bb8d2b", mid:"#e0bd57", belly:"#f5e7af", fin:"#caa13a" }, // golden
+  { back:"#7a4886", mid:"#a06fae", belly:"#dcc3e5", fin:"#8a5596" }, // violet
+];
+function drawRival(c, r, wag, p) {
+  const L = r, Hh = r * 0.52;
+  // forked tail
+  c.save(); c.translate(-L*0.84,0); c.rotate(wag*0.55);
+  c.beginPath();
+  c.moveTo(0,0);
+  c.quadraticCurveTo(-L*0.4,-Hh*1.2,-L*0.72,-Hh*1.5);
+  c.quadraticCurveTo(-L*0.5,-Hh*0.2,-L*0.52,0);
+  c.quadraticCurveTo(-L*0.5,Hh*0.2,-L*0.72,Hh*1.5);
+  c.quadraticCurveTo(-L*0.4,Hh*1.2,0,0);
+  c.closePath();
+  const tg=c.createLinearGradient(-L,0,0,0); tg.addColorStop(0,p.back); tg.addColorStop(1,p.fin);
+  c.fillStyle=tg; c.fill(); c.restore();
+  // dorsal fin
+  c.beginPath();
+  c.moveTo(L*0.28,-Hh*0.92);
+  c.quadraticCurveTo(-L*0.05,-Hh*1.75,-L*0.4,-Hh*0.85);
+  c.quadraticCurveTo(-L*0.05,-Hh*1.0,L*0.28,-Hh*0.8);
+  c.closePath(); c.fillStyle=p.fin; c.fill();
+  // anal fin
+  c.beginPath();
+  c.moveTo(-L*0.05,Hh*0.82);
+  c.quadraticCurveTo(-L*0.25,Hh*1.4,-L*0.42,Hh*0.78);
+  c.quadraticCurveTo(-L*0.2,Hh*0.8,-L*0.05,Hh*0.7);
+  c.closePath(); c.fillStyle=p.fin; c.fill();
+  // body
+  c.beginPath();
+  c.moveTo(L*0.98,0);
+  c.quadraticCurveTo(L*0.55,-Hh*0.95,-L*0.05,-Hh);
+  c.quadraticCurveTo(-L*0.7,-Hh*0.85,-L*0.9,0);
+  c.quadraticCurveTo(-L*0.7,Hh*0.85,-L*0.05,Hh);
+  c.quadraticCurveTo(L*0.55,Hh*0.95,L*0.98,0);
+  c.closePath();
+  const bg=c.createLinearGradient(0,-Hh,0,Hh);
+  bg.addColorStop(0,p.back); bg.addColorStop(.5,p.mid); bg.addColorStop(1,p.belly);
+  c.fillStyle=bg; c.fill();
+  // belly sheen
+  c.beginPath(); c.ellipse(L*0.1,Hh*0.5,L*0.6,Hh*0.4,0,0,TAU);
+  c.fillStyle="rgba(255,255,255,.14)"; c.fill();
+  // lateral line
+  c.beginPath(); c.moveTo(L*0.8,-Hh*0.05);
+  c.quadraticCurveTo(0,-Hh*0.12,-L*0.7,-Hh*0.02);
+  c.lineWidth=Math.max(1,r*0.04); c.strokeStyle="rgba(255,255,255,.2)"; c.stroke();
+  // gill
+  c.beginPath(); c.arc(L*0.45,0,Hh*0.9,-1.0,1.0);
+  c.lineWidth=Math.max(1,r*0.05); c.strokeStyle="rgba(0,0,0,.12)"; c.stroke();
+  // pectoral fin
+  c.beginPath(); c.moveTo(L*0.35,Hh*0.15);
+  c.quadraticCurveTo(L*0.1,Hh*0.85,L*0.5,Hh*0.6);
+  c.quadraticCurveTo(L*0.5,Hh*0.3,L*0.35,Hh*0.15); c.closePath();
+  c.fillStyle=p.fin; c.globalAlpha=.85; c.fill(); c.globalAlpha=1;
+  // mouth
+  c.beginPath(); c.moveTo(L*0.98,Hh*0.06); c.lineTo(L*0.82,Hh*0.16);
+  c.lineWidth=Math.max(1,r*0.05); c.strokeStyle="rgba(0,0,0,.3)"; c.stroke();
+  // eye
+  eye(c, L*0.62, -Hh*0.25, r*0.13);
+}
+
+const SPECIES = {
+  tang:    { draw: drawTang,    ht: 0.74 },
+  damsel:  { draw: drawDamsel,  ht: 0.80 },
+  purple:  { draw: drawPurple,  ht: 0.44 },
+  anthias: { draw: drawAnthias, ht: 0.60 },
+};
+const SPECIES_KEYS = ["tang","damsel","purple","tang","anthias","damsel"];
+
+// =====================================================================
+//  Entities
+// =====================================================================
+class Fish {
+  constructor(r, x, y, vx, p) {
+    this.r = r; this.x = x; this.y = y; this.vx = vx;
+    this.p = p;
+    this.phase = rand(0, TAU);
+    this.dead = false;
+  }
+  update(dt) {
+    const v = sharkPanic ? this.vx * 3.2 : this.vx;  // flee fast when a shark is near
+    this.x += v * dt;                                // HORIZONTAL ONLY, fixed lane
+    this.phase += dt * (4 + Math.abs(v) * 0.03);
+    const m = this.r + 80;
+    if (this.vx > 0 && this.x - m > W) this.dead = true;
+    if (this.vx < 0 && this.x + m < 0) this.dead = true;
+  }
+  draw(c) {
+    const dir = this.vx >= 0 ? 1 : -1;
+    const wag = Math.sin(this.phase) * 0.5;
+    const r = this.r * (fishShrink>0 ? FISH_SHRINK : 1);  // brujería shrinks all fish
+    c.save(); c.translate(this.x, this.y); c.scale(dir, 1);
+    drawRival(c, r, wag, this.p);
+    if (fishShrink > 0) {                              // magical green sheen while shrunk
+      c.globalAlpha = 0.34; c.beginPath(); c.arc(0,0,r*1.14,0,TAU);
+      c.fillStyle="#9dff6a"; c.fill(); c.globalAlpha=1;
+    }
+    c.restore();
+  }
+}
+
+// ---- Shark: a giant menace. Always lethal — unless SMULMODUS is active. ----
+function drawShark(c, r, wag){
+  // r ≈ half body length; faces +x. Sleek grey predator with white belly.
+  const L=r, Hh=r*0.5;
+  c.save();
+  c.rotate(wag*0.12);
+  // tail
+  c.beginPath();
+  c.moveTo(-L*0.78,0);
+  c.lineTo(-L*1.02,-Hh*0.95);
+  c.lineTo(-L*0.74,-Hh*0.12);
+  c.lineTo(-L*1.0, Hh*0.75);
+  c.closePath();
+  c.fillStyle="#5b6b76"; c.fill();
+  // body
+  c.beginPath();
+  c.moveTo(L*0.98,0);
+  c.quadraticCurveTo(L*0.55,-Hh*0.92,-L*0.1,-Hh*0.78);
+  c.quadraticCurveTo(-L*0.6,-Hh*0.6,-L*0.78,0);
+  c.quadraticCurveTo(-L*0.6,Hh*0.6,-L*0.1,Hh*0.78);
+  c.quadraticCurveTo(L*0.55,Hh*0.92,L*0.98,0);
+  c.closePath();
+  const bg=c.createLinearGradient(0,-Hh,0,Hh);
+  bg.addColorStop(0,"#7c8c97"); bg.addColorStop(.55,"#64737e"); bg.addColorStop(.56,"#e9eef1"); bg.addColorStop(1,"#cfd8dd");
+  c.fillStyle=bg; c.fill();
+  // dorsal fin
+  c.beginPath(); c.moveTo(L*0.12,-Hh*0.7);
+  c.quadraticCurveTo(L*0.02,-Hh*1.7,-L*0.32,-Hh*0.62); c.closePath();
+  c.fillStyle="#566570"; c.fill();
+  // pectoral fin
+  c.beginPath(); c.moveTo(L*0.34,Hh*0.32);
+  c.quadraticCurveTo(L*0.18,Hh*1.15,L*0.5,Hh*0.6); c.closePath();
+  c.fillStyle="#566570"; c.fill();
+  // gills
+  c.strokeStyle="rgba(0,0,0,.18)"; c.lineWidth=Math.max(1,r*0.03);
+  for(let i=0;i<3;i++){ c.beginPath(); c.arc(L*0.5-i*r*0.08,0,Hh*0.55,-0.9,0.9); c.stroke(); }
+  // mouth with teeth
+  c.beginPath(); c.moveTo(L*0.98,Hh*0.06); c.quadraticCurveTo(L*0.7,Hh*0.34,L*0.45,Hh*0.26);
+  c.lineWidth=Math.max(1,r*0.04); c.strokeStyle="rgba(0,0,0,.5)"; c.stroke();
+  c.fillStyle="#fff";
+  for(let i=0;i<5;i++){ const tx=L*0.5+i*L*0.1; c.beginPath();
+    c.moveTo(tx,Hh*0.28); c.lineTo(tx+L*0.04,Hh*0.13); c.lineTo(tx+L*0.08,Hh*0.28); c.closePath(); c.fill(); }
+  // eye
+  c.beginPath(); c.arc(L*0.62,-Hh*0.22,r*0.07,0,TAU); c.fillStyle="#11202a"; c.fill();
+  c.beginPath(); c.arc(L*0.64,-Hh*0.25,r*0.025,0,TAU); c.fillStyle="#fff"; c.fill();
+  c.restore();
+}
+class Shark {
+  constructor(){
+    this.fromLeft = Math.random()<0.5;
+    this.r = clamp(Math.min(W,H)*0.30, 120, 320);    // huge
+    this.x = this.fromLeft ? -this.r*1.6 : W+this.r*1.6;
+    this.y = clamp(rand(this.r*0.6, H-BAR_H-this.r*0.6), this.r*0.6, H-this.r*0.6);
+    this.vx = (this.fromLeft?1:-1)*rand(170,220);     // fast
+    this.phase=0; this.dead=false;
+  }
+  update(dt){
+    this.x += this.vx*dt; this.phase += dt*7;
+    const m=this.r*1.8;
+    if(this.vx>0 && this.x-m>W) this.dead=true;
+    if(this.vx<0 && this.x+m<0) this.dead=true;
+  }
+  draw(c){
+    const dir=this.vx>=0?1:-1;
+    c.save(); c.translate(this.x,this.y); c.scale(dir,1);
+    c.shadowColor="rgba(0,0,0,.35)"; c.shadowBlur=20;
+    drawShark(c,this.r,Math.sin(this.phase));
+    c.restore();
+  }
+}
+
+// Animated player sprite: 61 transparent frames from the video, looped continuously.
+const FRAME_COUNT = 61, FRAME_FPS = 12;
+const frames = [];
+let animTime = 0;
+for (let i = 1; i <= FRAME_COUNT; i++) {
+  const im = new Image();
+  im.src = "frames/frame_" + String(i).padStart(3, "0") + ".png";
+  frames.push(im);
+}
+function currentFrame() {
+  const idx = Math.floor(animTime * FRAME_FPS) % FRAME_COUNT;
+  let img = frames[idx];
+  if (!(img && img.complete && img.naturalWidth)) img = frames[0];
+  return (img && img.complete && img.naturalWidth) ? img : null;
+}
+
+class Player {
+  constructor(){ this.reset(); }
+  reset() {
+    this.r = 20; this.x = W*0.5; this.y = H*0.5;
+    this.vx = 0; this.vy = 0; this.phase = 0; this.facing = 1;
+    this.inv = 0; this.score = 0; this.lives = 3;
+    this.feast = 0; this.drunk = 0;                     // picanha / caipirinha effect timers
+  }
+  update(dt) {
+    if (this.feast>0) this.feast-=dt;
+    if (this.drunk>0) this.drunk-=dt;
+    if (this.inv>0)   this.inv-=dt;
+
+    const drunk = this.drunk>0;
+    let speed = 300 + this.r * 1.4;
+    if (drunk) speed *= 0.9;                            // borracha → un poquito más lenta
+    const resp  = drunk ? 0.12 : 0.16;                 // slightly sluggish, still controllable
+    const respK = drunk ? 0.13 : 0.18;
+
+    if (ptr.active) {                                   // finger-drag (mobile)
+      const dx=ptr.x-this.x, dy=ptr.y-this.y, d=Math.hypot(dx,dy);
+      const f=clamp(d/110,0,1);
+      this.vx=lerp(this.vx,(d>3?dx/d:0)*speed*f,resp);
+      this.vy=lerp(this.vy,(d>3?dy/d:0)*speed*f,resp);
+    } else {                                            // arrow keys (desktop)
+      let kx=0, ky=0;
+      if (keys["arrowleft"]) kx-=1;
+      if (keys["arrowright"]) kx+=1;
+      if (keys["arrowup"]) ky-=1;
+      if (keys["arrowdown"]) ky+=1;
+      const m=Math.hypot(kx,ky)||1;
+      this.vx=lerp(this.vx,(kx/m)*speed,respK);
+      this.vy=lerp(this.vy,(ky/m)*speed,respK);
+    }
+    if (drunk) {                                        // very gentle woozy sway
+      this.vx += Math.sin(animTime*3.0)*speed*0.08;
+      this.vy += Math.cos(animTime*2.2)*speed*0.07;
+    }
+    this.x=clamp(this.x+this.vx*dt, this.r, W-this.r);
+    this.y=clamp(this.y+this.vy*dt, this.r, H-BAR_H-this.r);
+    const sp=Math.hypot(this.vx,this.vy);
+    this.phase+=dt*(4+sp*0.02);
+    if (Math.abs(this.vx)>14) this.facing=this.vx>0?1:-1;
+  }
+  draw(c) {
+    if (this.inv>0 && Math.floor(this.inv*12)%2===0) return;
+    // power-up aura (drawn behind the sprite, in unscaled space)
+    const aura = this.feast>0 ? "#ff2e2e" : this.drunk>0 ? "#c6ff4a" : null;  // red=glotón, lime=borracha
+    if (aura) {
+      const fade = this.feast>0 ? this.feast : this.drunk;
+      const blink = fade<1.5 && Math.floor(fade*8)%2===0 ? 0.35 : 1;   // blink when running out
+      const big = this.feast>0 ? 1.85 : 1.5;                           // glotón glow is bigger
+      const pr = this.r*big + Math.sin(animTime*6)*this.r*0.16;
+      c.save(); c.globalAlpha=(this.feast>0?0.7:0.55)*blink;
+      const rg=c.createRadialGradient(this.x,this.y,this.r*0.4,this.x,this.y,pr);
+      rg.addColorStop(0,aura); rg.addColorStop(1,"rgba(0,0,0,0)");
+      c.fillStyle=rg; c.beginPath(); c.arc(this.x,this.y,pr,0,TAU); c.fill();
+      c.restore();
+    }
+    const img = currentFrame();
+    c.save(); c.translate(this.x,this.y);
+    if (img) {
+      const iw = this.r*3.1, ih = iw * (img.naturalHeight/img.naturalWidth);
+      c.scale(-this.facing, 1);                       // sprite faces left → flip when moving right
+      c.shadowColor="rgba(255,210,90,.4)"; c.shadowBlur=14;
+      c.drawImage(img, -iw*0.5, -ih*0.5, iw, ih);
+    } else {
+      c.beginPath(); c.arc(0,0,this.r,0,TAU); c.fillStyle="#ff8f2e"; c.fill();
+    }
+    c.restore();
+  }
+}
+
+class Bubble {
+  constructor(){ this.reset(true); }
+  reset(init){ this.x=rand(0,W); this.y=init?rand(0,H):H+10; this.r=rand(1.5,5); this.sp=rand(26,64); this.dr=rand(-8,8); this.ph=rand(0,TAU); }
+  update(dt){ this.y-=this.sp*dt; this.x+=Math.sin(this.ph+=dt*2)*this.dr*dt; if(this.y<-10) this.reset(false); }
+  draw(c){ c.beginPath(); c.arc(this.x,this.y,this.r,0,TAU); c.fillStyle="rgba(255,255,255,.13)"; c.fill();
+    c.lineWidth=1; c.strokeStyle="rgba(255,255,255,.28)"; c.stroke(); }
+}
+class Particle {
+  constructor(x,y,col){ this.x=x;this.y=y; const a=rand(0,TAU),s=rand(40,150);
+    this.vx=Math.cos(a)*s; this.vy=Math.sin(a)*s; this.life=1; this.col=col; this.r=rand(2,5); }
+  update(dt){ this.x+=this.vx*dt; this.y+=this.vy*dt; this.vy+=110*dt; this.life-=dt*1.8; }
+  draw(c){ c.globalAlpha=Math.max(0,this.life); c.beginPath(); c.arc(this.x,this.y,this.r,0,TAU);
+    c.fillStyle=this.col; c.fill(); c.globalAlpha=1; }
+}
+
+// =====================================================================
+//  Power-ups  — floating collectibles (image sprites with a glow)
+//    picanha    → MODO GLOTÓN: come TODOS los peces 7s (y al tiburón)
+//    brujería   → encoge a TODOS los peces 4s → ¡todos comestibles! (bueno)
+//    caipirinha → marea a Dileycita, cuesta nadar 4s (trampa)
+// =====================================================================
+const FISH_SHRINK = 0.42;                              // how small fish get during brujería
+const PU_IMG = { picanha:new Image(), brujeria:new Image(), caipirinha:new Image() };
+PU_IMG.picanha.src    = "picanha.png";
+PU_IMG.brujeria.src   = "brujeria.png";
+PU_IMG.caipirinha.src = "caipirinha.png";
+const PU_TYPES = [
+  { key:"picanha",    glow:"#ffcf5a", weight:0.9 },   // MODO GLOTÓN: come todo + tiburón
+  { key:"brujeria",   glow:"#7dff5a", weight:1.0 },   // encoge a todos los peces
+  { key:"caipirinha", glow:"#d6ff4a", weight:0.6 },   // marea (trampa) — 40% menos frecuente
+];
+function pickPU(){
+  const tot=PU_TYPES.reduce((s,t)=>s+t.weight,0); let r=Math.random()*tot;
+  for(const t of PU_TYPES){ if((r-=t.weight)<=0) return t; } return PU_TYPES[0];
+}
+class PowerUp {
+  constructor(){
+    this.type=pickPU();
+    const fromLeft=Math.random()<0.5;
+    this.size=clamp(Math.min(W,H)*0.26, 130, 230);   // big, clearly visible
+    this.r=this.size*0.42;                            // collision radius (generous)
+    this.x=fromLeft?-this.size:W+this.size;
+    this.baseY=rand(this.size*0.6, H-BAR_H-this.size*0.6);
+    this.y=this.baseY;
+    this.vx=rand(50,85)*(fromLeft?1:-1);
+    this.phase=rand(0,TAU); this.t=0; this.dead=false;
+  }
+  update(dt){
+    this.t+=dt; this.x+=this.vx*dt; this.phase+=dt*2;
+    this.y=this.baseY+Math.sin(this.phase)*12;       // gentle bob
+    const m=this.size+40;
+    if(this.vx>0 && this.x-m>W) this.dead=true;
+    if(this.vx<0 && this.x+m<0) this.dead=true;
+  }
+  draw(c){
+    const img=PU_IMG[this.type.key];
+    const pulse=0.6+Math.sin(this.t*4)*0.4;
+    c.save(); c.translate(this.x,this.y);
+    c.scale(1+Math.sin(this.t*3)*0.04, 1+Math.sin(this.t*3)*0.04);   // subtle breathing
+    c.shadowColor=this.type.glow; c.shadowBlur=22+pulse*16;
+    if(img && img.complete && img.naturalWidth){
+      const ar=img.naturalWidth/img.naturalHeight;
+      let iw,ih; if(ar>=1){ iw=this.size; ih=this.size/ar; } else { ih=this.size; iw=this.size*ar; }
+      c.drawImage(img,-iw*0.5,-ih*0.5,iw,ih);
+    } else {
+      c.beginPath(); c.arc(0,0,this.r,0,TAU); c.fillStyle=this.type.glow; c.fill();
+    }
+    c.restore();
+  }
+}
+
+// Extra-life heart — drifts across the screen roughly every 2 minutes.
+class Heart {
+  constructor(){
+    const fromLeft=Math.random()<0.5;
+    this.size=clamp(Math.min(W,H)*0.13, 54, 96);
+    this.r=this.size*0.5;                              // collision radius
+    this.x=fromLeft?-this.size:W+this.size;
+    this.baseY=rand(this.size, H-BAR_H-this.size);
+    this.y=this.baseY;
+    this.vx=rand(55,80)*(fromLeft?1:-1);
+    this.phase=rand(0,TAU); this.t=0; this.dead=false;
+  }
+  update(dt){
+    this.t+=dt; this.x+=this.vx*dt; this.phase+=dt*2;
+    this.y=this.baseY+Math.sin(this.phase)*16;
+    const m=this.size+40;
+    if(this.vx>0 && this.x-m>W) this.dead=true;
+    if(this.vx<0 && this.x+m<0) this.dead=true;
+  }
+  draw(c){
+    const pulse=1+Math.sin(this.t*5)*0.12;
+    c.save(); c.translate(this.x,this.y); c.scale(pulse,pulse);
+    c.shadowColor="#ff4d6d"; c.shadowBlur=22;
+    c.font=this.size+"px serif"; c.textAlign="center"; c.textBaseline="middle";
+    c.fillText("❤️",0,0);
+    c.restore();
+  }
+}
+
+// =====================================================================
+//  Background (matched to the photo: sunlit top, rays, rippled sand)
+// =====================================================================
+const seaweeds=[], corals=[];
+function buildDecor(){
+  seaweeds.length=0; corals.length=0;
+  const n=Math.max(4,Math.floor(W/260));
+  for(let i=0;i<n;i++) seaweeds.push({x:rand(40,W-40),h:rand(60,130),w:rand(7,13),ph:rand(0,TAU),blades:(Math.random()*2|0)+2});
+  for(let i=0;i<Math.max(2,n-2);i++) corals.push({x:rand(30,W-30),s:rand(.7,1.25),col:pick(["#c89bd9","#b98ed0","#d6a6c6"])});
+}
+
+function drawBackground(t){
+  const sandTop = H - BAR_H - Math.min(120, H*0.16);
+  // water
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,"#9fdcf0"); g.addColorStop(.25,"#5fbfe0");
+  g.addColorStop(.6,"#2f9fcf"); g.addColorStop(1,"#1f80b0");
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  // bright surface glow top-centre
+  const rg=ctx.createRadialGradient(W*0.5,-H*0.1,10,W*0.5,-H*0.1,H*0.9);
+  rg.addColorStop(0,"rgba(255,255,255,.5)"); rg.addColorStop(1,"rgba(255,255,255,0)");
+  ctx.fillStyle=rg; ctx.fillRect(0,0,W,H*0.7);
+  // light rays
+  ctx.save(); ctx.globalCompositeOperation="lighter";
+  const cx=W*0.5;
+  for(let i=0;i<7;i++){
+    const off=(i-3)*W*0.085, sway=Math.sin(t*0.0003+i)*26, tw=22+i*5;
+    ctx.beginPath();
+    ctx.moveTo(cx+off-tw+sway,0); ctx.lineTo(cx+off+tw+sway,0);
+    ctx.lineTo(cx+off+tw*3+sway*2,H*0.95); ctx.lineTo(cx+off-tw*3+sway*2,H*0.95); ctx.closePath();
+    const lg=ctx.createLinearGradient(0,0,0,H);
+    lg.addColorStop(0,"rgba(225,248,255,.13)"); lg.addColorStop(1,"rgba(225,248,255,0)");
+    ctx.fillStyle=lg; ctx.fill();
+  }
+  ctx.restore();
+  // sand
+  const sg=ctx.createLinearGradient(0,sandTop,0,H);
+  sg.addColorStop(0,"#efe0b4"); sg.addColorStop(1,"#dcc488");
+  ctx.beginPath(); ctx.moveTo(0,sandTop+18);
+  const step=W/9;
+  for(let i=0;i<=9;i++){ ctx.lineTo(i*step, sandTop+Math.sin(i*1.3+2)*12+(i%2?5:0)); }
+  ctx.lineTo(W,H); ctx.lineTo(0,H); ctx.closePath();
+  ctx.fillStyle=sg; ctx.fill();
+  // sand ripples
+  ctx.save(); ctx.beginPath(); ctx.moveTo(0,sandTop+18);
+  for(let i=0;i<=9;i++){ ctx.lineTo(i*step, sandTop+Math.sin(i*1.3+2)*12+(i%2?5:0)); }
+  ctx.lineTo(W,H); ctx.lineTo(0,H); ctx.closePath(); ctx.clip();
+  ctx.strokeStyle="rgba(180,150,90,.22)"; ctx.lineWidth=3;
+  for(let k=0;k<5;k++){ ctx.beginPath();
+    for(let x=0;x<=W;x+=18){ const y=sandTop+34+k*22+Math.sin(x*0.02+k)*6; x===0?ctx.moveTo(x,y):ctx.lineTo(x,y);} ctx.stroke(); }
+  ctx.restore();
+  // seaweed
+  for(const s of seaweeds){ const by=sandTop+6;
+    for(let b=0;b<s.blades;b++){ const bx=s.x+(b-s.blades/2)*s.w*1.2;
+      ctx.beginPath(); ctx.moveTo(bx,by);
+      const sway=Math.sin(t*0.0015+s.ph+b)*14;
+      ctx.quadraticCurveTo(bx+sway,by-s.h*0.5,bx+sway*1.6,by-s.h);
+      ctx.lineWidth=s.w*(1-b*0.12); ctx.lineCap="round";
+      ctx.strokeStyle=b%2?"#4aa85c":"#3c9450"; ctx.stroke(); } }
+  // coral
+  for(const co of corals){ const by=sandTop+12;
+    ctx.save(); ctx.translate(co.x,by); ctx.scale(co.s,co.s); ctx.fillStyle=co.col;
+    for(let k=0;k<5;k++){ ctx.beginPath(); ctx.ellipse((k-2)*8,-12-Math.abs(k-2)*4,6,15,0,0,TAU); ctx.fill(); }
+    ctx.restore(); }
+}
+
+// =====================================================================
+//  Game state
+// =====================================================================
+let state="start";
+let iosBlocked=false;                    // true on iPhone/iPad in Safari (not installed)
+let fishes=[]; let powerups=[]; const bubbles=[]; const particles=[];
+const player=new Player();
+let spawnTimer=0, elapsed=0, puTimer=6, fishShrink=0, prevFeast=0;
+let heart=null, heartTimer=120;                  // extra-life heart (~every 2 min)
+// shark event state — shark arrives roughly once a minute
+let shark=null, sharkTimer=rand(45,60), sharkWarn=0, sharkPanic=false, shake=0;
+for(let i=0;i<26;i++) bubbles.push(new Bubble());
+
+// =====================================================================
+//  Audio — generative background music + sound effects (Web Audio API)
+//  No files needed. Starts on the first tap (required by iOS).
+// =====================================================================
+let actx=null, master=null, sfxGain=null;
+let music=null;                              // looping background music (dileycita.mp3)
+let muted = localStorage.getItem("fishyMuted")==="1";
+const MUSIC_VOL = 0.6;
+const midi2f = m => 440*Math.pow(2,(m-69)/12);
+
+function ensureAudio(){
+  // --- looping background music via HTMLAudioElement ---
+  if(!music){
+    music = new Audio("dileycita.mp3");
+    music.loop = true;                       // restart automatically when it ends
+    music.preload = "auto";
+    music.volume = muted ? 0 : MUSIC_VOL;
+  }
+  if(!muted){ const p = music.play(); if(p && p.catch) p.catch(()=>{}); }
+
+  // --- Web Audio context for sound effects ---
+  if(actx){ if(actx.state==="suspended") actx.resume(); return; }
+  const AC = window.AudioContext||window.webkitAudioContext;
+  if(!AC) return;
+  actx = new AC();
+  master = actx.createGain(); master.gain.value = 0.9; master.connect(actx.destination);
+  sfxGain = actx.createGain(); sfxGain.gain.value = muted?0:0.7; sfxGain.connect(master);
+  // silent-buffer unlock for iOS
+  const b=actx.createBuffer(1,1,22050), s=actx.createBufferSource(); s.buffer=b; s.connect(actx.destination); s.start(0);
+}
+function sfx(type){
+  if(!actx) return;
+  const t=actx.currentTime, o=actx.createOscillator(), g=actx.createGain();
+  o.connect(g); g.connect(sfxGain);
+  if(type==="eat"){
+    o.type="square"; o.frequency.setValueAtTime(520,t); o.frequency.exponentialRampToValueAtTime(1050,t+0.12);
+    g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.25,t+0.01); g.gain.exponentialRampToValueAtTime(0.0001,t+0.16);
+    o.start(t); o.stop(t+0.2);
+  } else if(type==="hit"){
+    o.type="sawtooth"; o.frequency.setValueAtTime(240,t); o.frequency.exponentialRampToValueAtTime(70,t+0.25);
+    g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.4,t+0.01); g.gain.exponentialRampToValueAtTime(0.0001,t+0.3);
+    o.start(t); o.stop(t+0.35);
+  } else if(type==="over"){
+    o.type="triangle";
+    [0,0.18,0.36].forEach((d,i)=>{ o.frequency.setValueAtTime(midi2f(64-i*4),t+d); });
+    g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.3,t+0.02); g.gain.exponentialRampToValueAtTime(0.0001,t+0.6);
+    o.start(t); o.stop(t+0.65);
+  }
+}
+function setMuted(m){
+  muted=m; localStorage.setItem("fishyMuted", m?"1":"0");
+  if(music){ music.volume = m?0:MUSIC_VOL; if(m) music.pause(); else { const p=music.play(); if(p&&p.catch) p.catch(()=>{}); } }
+  if(actx){ sfxGain.gain.value=m?0:0.7; }
+  const mb=document.getElementById("muteBtn");
+  if(mb) mb.innerHTML = m ? ICON_MUTE : ICON_SOUND;
+}
+
+function laneY(){ return rand(40, H - BAR_H - 50); }
+
+// returns true if a "dangerous" (bigger-than-player) fish was spawned
+function spawnFish(){
+  const fromLeft=Math.random()<0.5;
+  const t=clamp(elapsed/120,0,1);                      // gentle difficulty ramp
+  // how many threats are already on screen — keeps it from piling up
+  const bigOnScreen = fishes.filter(f => f.r > player.r*1.05).length;
+  let rr, roll=Math.random(), big=false;
+  if(roll < 0.64 - t*0.05)       rr=rand(player.r*0.35, player.r*0.85);  // edible (stays common)
+  else if(roll < 0.88)           rr=rand(player.r*0.92, player.r*1.25);  // risky / slightly bigger
+  else { rr=rand(player.r*1.2, player.r*1.6); big=true; }                // dangerous — capped, never huge
+  // never more than one big fish on screen at a time → always a fair gap
+  if(big && bigOnScreen >= 1){ rr=rand(player.r*0.5, player.r*0.85); big=false; }
+  rr=clamp(rr, 10, Math.min(W,H)*0.30);               // hard size cap so nothing fills the screen
+  const speed=rand(50,120)*(fromLeft?1:-1)*(1+t*0.3);
+  const m=rr+40;
+  fishes.push(new Fish(rr, fromLeft?-m:W+m, laneY(), speed, pick(RIVALS)));
+  return big;
+}
+
+function startGame(){
+  if(iosBlocked) return;                 // can't play in iOS browser — install first
+  ensureAudio();                         // unlock + start music on this tap
+  player.reset();
+  fishes=[]; powerups=[]; particles.length=0; spawnTimer=0; elapsed=0; puTimer=6; fishShrink=0; prevFeast=0;
+  heart=null; heartTimer=120;
+  shark=null; sharkTimer=rand(45,60); sharkWarn=0; sharkPanic=false; shake=0;
+  for(let i=0;i<6;i++){                                  // start with small, edible fish only
+    const rr=rand(12,player.r*0.85), fl=Math.random()<0.5;
+    fishes.push(new Fish(rr, rand(0,W), laneY(), rand(50,110)*(fl?1:-1), pick(RIVALS)));
+  }
+  state="play";
+  startScreen.classList.add("hidden");
+  overScreen.classList.add("hidden");
+  updateHUD();
+}
+function gameOver(msg){
+  state="over"; finalScore.textContent=player.score; overMsg.textContent=msg;
+  overScreen.classList.remove("hidden"); sfx("over");
+}
+function burst(x,y,col,n=12){ for(let i=0;i<n;i++) particles.push(new Particle(x,y,col)); }
+
+// ---------- Power-ups ----------
+const puMsgEl=document.getElementById("puMsg");
+let puMsgTimer=0;
+function showPU(text,color){
+  puMsgEl.textContent=text; puMsgEl.style.color=color;
+  puMsgEl.classList.add("show"); puMsgTimer=2.2;
+}
+function applyPU(key){
+  if(key==="picanha"){
+    player.feast=7; burst(player.x,player.y,"#ffcf5a",24); sfx("eat");
+    showPU("🥩 ¡MODO GLOTÓN! ¡Cómete todo!", "#ffd36b");
+  } else if(key==="brujeria"){
+    fishShrink=4; burst(player.x,player.y,"#7dff5a",24); sfx("eat");
+    showPU("🧪 ¡Brujería! ¡Peces diminutos!", "#9dff6a");
+  } else if(key==="caipirinha"){
+    player.drunk=4; burst(player.x,player.y,"#d6ff4a",24); sfx("hit");
+    showPU("🍹 ¡Borracha! Cuesta nadar", "#e6ff5a");
+  }
+}
+function handlePowerups(){
+  for(const pu of powerups){
+    if(pu.dead) continue;
+    const dx=pu.x-player.x, dy=pu.y-player.y;
+    if(Math.hypot(dx,dy) < player.r + pu.r){ pu.dead=true; applyPU(pu.type.key); }
+  }
+}
+
+function handleEating(){
+  const sf = fishShrink>0 ? FISH_SHRINK : 1;            // brujería makes fish small & edible
+  for(const f of fishes){
+    if(f.dead) continue;
+    const fr = f.r*sf;                                  // effective size right now
+    const dx=f.x-player.x, dy=f.y-player.y, dist=Math.hypot(dx,dy);
+    if(dist < player.r + fr*0.55){
+      if(player.feast>0 || fr <= player.r*0.92){         // modo glotón of brujería → comestible
+        f.dead=true; player.score += Math.max(1,Math.round(fr));
+        player.r = Math.min(player.r + fr*0.05, Math.min(W,H)*0.4);
+        burst(f.x,f.y, f.p.mid, 10); sfx("eat"); updateHUD();
+      } else if(player.inv<=0){                          // hit by a bigger fish → lose a life
+        player.lives--; player.inv=2.0;
+        burst(player.x,player.y,"#ff5a5a",18); sfx("hit");
+        player.r=Math.max(20, player.r*0.85); updateHUD();
+        if(player.lives<=0){ gameOver("¡Te comió un pez más grande!"); return; }
+      }
+    }
+  }
+}
+function speciesColor(k){ return {tang:"#2f7fd6",damsel:"#3a93f0",purple:"#a35fd0",anthias:"#ff8f2e"}[k]; }
+
+// ---------- HUD ----------
+const scoreEl=document.getElementById("score");
+const livesEl=document.getElementById("lives");
+const startScreen=document.getElementById("startScreen");
+const overScreen=document.getElementById("overScreen");
+const finalScore=document.getElementById("finalScore");
+const overMsg=document.getElementById("overMsg");
+
+function updateHUD(){
+  scoreEl.textContent = player.score;
+  let h=""; for(let i=0;i<player.lives;i++) h+="❤️";
+  livesEl.textContent=h;
+}
+
+document.getElementById("startBtn").addEventListener("click", startGame);
+document.getElementById("againBtn").addEventListener("click", startGame);
+// ---------- Fullscreen ----------
+const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) ||
+              (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const isStandalone = window.navigator.standalone === true ||
+                     window.matchMedia("(display-mode: fullscreen)").matches ||
+                     window.matchMedia("(display-mode: standalone)").matches;
+const fsTip = document.getElementById("fsTip");
+const fsBtn = document.getElementById("fsBtn");
+if (isStandalone) fsBtn.style.display = "none";        // already fullscreen as installed app
+
+// iPhone/iPad in Safari → must install to Home Screen to play
+iosBlocked = isIOS && !isStandalone;
+if (iosBlocked) {
+  document.getElementById("iosGate").classList.remove("hidden");
+  fsBtn.style.display = "none";
+}
+fsBtn.addEventListener("click", () => {
+  const el = document.documentElement;
+  if (document.fullscreenElement) { document.exitFullscreen?.(); return; }
+  if (el.requestFullscreen) {
+    el.requestFullscreen().then(() => {
+      try { screen.orientation.lock("landscape"); } catch(e) {}
+    }).catch(() => {});
+  } else if (isIOS) {
+    fsTip.classList.remove("hidden");                  // Safari can't do real FS → show A2HS tip
+  }
+});
+document.getElementById("fsTipClose").addEventListener("click", () => fsTip.classList.add("hidden"));
+
+// ---------- Sound toggle ----------
+const ICON_SOUND = '<svg viewBox="0 0 24 24" fill="none"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="#fff"/><path d="M16 9a4 4 0 010 6M18.5 7a7 7 0 010 10" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>';
+const ICON_MUTE  = '<svg viewBox="0 0 24 24" fill="none"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="#fff" opacity=".7"/><path d="M16 9l5 6M21 9l-5 6" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>';
+const muteBtn = document.getElementById("muteBtn");
+muteBtn.innerHTML = muted ? ICON_MUTE : ICON_SOUND;
+if (isStandalone === false && iosBlocked) muteBtn.style.display = "none";
+muteBtn.addEventListener("click", () => { ensureAudio(); setMuted(!muted); });
+
+// =====================================================================
+//  Main loop
+// =====================================================================
+let last=performance.now();
+const SHK=11;                                        // max screen-shake overscan
+function loop(now){
+  let dt=(now-last)/1000; last=now; dt=Math.min(dt,0.05);
+  animTime += dt;                                    // drive the looping fish animation
+
+  // screen-shake offset (shark warning / shark present)
+  let ox=0, oy=0;
+  if(shake>0.4){ ox=rand(-shake,shake); oy=rand(-shake,shake); }
+  ctx.save(); ctx.translate(ox,oy);
+  ctx.fillStyle="#1f80b0"; ctx.fillRect(-SHK,-SHK,W+SHK*2,H+SHK*2);   // overscan so shake never gaps
+  drawBackground(now);
+  for(const b of bubbles){ b.update(dt); b.draw(ctx); }
+
+  if(state==="play"){
+    elapsed+=dt;
+    if(fishShrink>0) fishShrink-=dt;                   // brujería shrink countdown
+
+    // ---------- extra-life heart (~cada 2 min) ----------
+    if(!heart){
+      heartTimer-=dt;
+      if(heartTimer<=0){ heart=new Heart(); heartTimer=120; }
+    } else {
+      heart.update(dt);
+      const hdx=heart.x-player.x, hdy=heart.y-player.y;
+      if(!heart.dead && Math.hypot(hdx,hdy) < player.r + heart.r){
+        heart.dead=true; burst(player.x,player.y,"#ff4d6d",26); sfx("eat");
+        if(player.lives<4){ player.lives++; updateHUD(); showPU("❤️ ¡Vida extra!","#ff9db1"); }
+        else { player.score+=50; showPU("❤️ ¡Vidas al máximo! +50","#ff9db1"); }
+      }
+      if(heart.dead) heart=null;
+    }
+
+    // ---------- shark event ----------
+    if(!shark && sharkWarn<=0){
+      sharkTimer-=dt;
+      if(sharkTimer<=0){ sharkWarn=2.6; sharkPanic=true; sfx("hit"); showPU("⚠️ ¡TIBURÓN! ¡HUYE!","#ff6b6b"); }
+    } else if(sharkWarn>0 && !shark){
+      sharkWarn-=dt;
+      if(sharkWarn<=0) shark=new Shark();
+    }
+    const targetShake = sharkWarn>0 ? lerp(3,12,1-clamp(sharkWarn/2.6,0,1)) : (shark?6:0);
+    shake = lerp(shake, targetShake, 0.18);
+    const eventActive = sharkPanic || shark;
+
+    if(!eventActive){                                 // pause new spawns during the shark event
+      spawnTimer-=dt;
+      const interval=clamp(1.25-elapsed*0.004,0.7,1.25);
+      if(spawnTimer<=0 && fishes.length<11){ const big=spawnFish(); spawnTimer=interval+(big?1.0:0); }
+      puTimer-=dt;
+      if(puTimer<=0){ powerups.push(new PowerUp()); puTimer=rand(7,12); }
+    }
+
+    for(const pu of powerups) pu.update(dt);
+    for(const f of fishes) f.update(dt);
+    player.update(dt); handleEating(); handlePowerups();
+
+    // avisar cuando el MODO GLOTÓN termina
+    if(prevFeast>0 && player.feast<=0) showPU("🥩 ¡Se acabó el modo glotón!","#ffd36b");
+    prevFeast=player.feast;
+
+    if(shark){
+      shark.update(dt);
+      if(!shark.dead){
+        const dx=shark.x-player.x, dy=shark.y-player.y;
+        if(Math.hypot(dx,dy) < player.r + shark.r*0.6){
+          if(player.feast>0){                          // ¡picanha activa → te comes al tiburón!
+            shark.dead=true; player.score+=100;
+            player.r=Math.min(player.r*1.18, Math.min(W,H)*0.4);
+            burst(player.x,player.y,"#ff2e2e",38); sfx("eat");
+            showPU("🦈 ¡ÑAM! ¡Tiburón devorado! +100","#ffd36b"); updateHUD();
+          } else {
+            burst(player.x,player.y,"#ff2e2e",26); sfx("hit");
+            gameOver("¡Te comió el TIBURÓN! 🦈");
+          }
+        }
+      }
+    }
+
+    fishes=fishes.filter(f=>!f.dead);
+    powerups=powerups.filter(p=>!p.dead);
+    fishes.sort((a,b)=>a.r-b.r);
+    for(const f of fishes) f.draw(ctx);
+    for(const pu of powerups) pu.draw(ctx);
+    if(heart) heart.draw(ctx);
+    if(shark) shark.draw(ctx);
+    player.draw(ctx);
+
+    // shark gone (eaten or swam off) → reset, schedule next (~1/min)
+    if(shark && shark.dead){ shark=null; sharkPanic=false; sharkTimer=rand(50,65); }
+  } else {
+    shake=0;
+    if(fishes.length<6 && Math.random()<0.02){
+      const rr=rand(16,42), fl=Math.random()<0.5;
+      fishes.push(new Fish(rr, fl?-50:W+50, laneY(), rand(45,100)*(fl?1:-1), pick(RIVALS)));
+    }
+    for(const f of fishes) f.update(dt);
+    fishes=fishes.filter(f=>!f.dead);
+    for(const f of fishes) f.draw(ctx);
+  }
+
+  for(const p of particles){ p.update(dt); p.draw(ctx); }
+  for(let i=particles.length-1;i>=0;i--) if(particles[i].life<=0) particles.splice(i,1);
+
+  ctx.restore();                                      // end shake transform
+
+  // full-screen tints (untransformed so they never gap)
+  if(state==="play"){
+    if(fishShrink>0){                                  // green magic tint while fish are shrunk
+      const a=fishShrink<1.5 && Math.floor(fishShrink*8)%2===0 ? 0.08 : 0.16;
+      ctx.fillStyle="rgba(130,255,120,"+a+")"; ctx.fillRect(0,0,W,H);
+    }
+    if(player.drunk>0){                                // woozy lime tint while borracha
+      const a=0.08+0.05*Math.abs(Math.sin(animTime*4));
+      ctx.fillStyle="rgba(210,255,90,"+a+")"; ctx.fillRect(0,0,W,H);
+    }
+    if(sharkWarn>0){                                   // pulsing red danger flash
+      const a=0.08+0.12*Math.abs(Math.sin(animTime*12));
+      ctx.fillStyle="rgba(255,40,40,"+a+")"; ctx.fillRect(0,0,W,H);
+    }
+  }
+
+  // fade out the power-up banner
+  if(puMsgTimer>0){ puMsgTimer-=dt; if(puMsgTimer<=0) puMsgEl.classList.remove("show"); }
+
+  requestAnimationFrame(loop);
+}
+
+resize();
+updateHUD();
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>
